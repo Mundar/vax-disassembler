@@ -21,7 +21,7 @@ pub use crate::{
     operand::{IndexedOperand, Operand, ReadOperand, Register},
 };
 
-/// Extends [`Read`] with a method to read a VAX operand ([`Operand`]).
+/// Extends [`Read`] with a method to read a VAX instruction ([`Instruction`]).
 ///
 /// # Examples
 ///
