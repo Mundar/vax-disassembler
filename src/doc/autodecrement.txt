@@ -1,0 +1,7 @@
+# Autodecrement Mode
+
+The autodecrement addressing mode decreases the value in the specified register
+by the number of bytes indicated by the VAX data type, and then the register is
+used as a pointer to memory to access the VAX data type. It is identified by
+byte values 0x70 through 0x7E with the low nibble indicating which register is
+used. 0x7F (which would use the PC) is unpredictable.

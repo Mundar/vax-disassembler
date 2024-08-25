@@ -1,0 +1,25 @@
+# Byte Displacement Deferred Mode
+
+The byte displacement deferred addressing mode is used to access the data
+pointed to by an address stored in memory pointed to by a register with a
+signed byte offset. It is identified by byte values 0xB0 through 0xBF with the
+low nibble indicating the register. It is followed by the (8-bit) byte-sized
+offset value.
+
+When the register is PC (0xBF), it is called byte relative deferred mode. It
+uses the value of the PC register after it reads the operand and then adds the
+signed byte offset to point to the 32-bit pointer which it uses to access the
+desired memory. When represented in MACRO32 assembly language, the `(PC)` is
+implied.
+
+```text
+        ; The following instruction takes the pointer in R0 and adds 20 to it.
+        ; It then uses the 32-bit address stored at that location to access
+        ; the 32-bit value and store it in R1.
+        MOVL    @B^20(R0), R1           ; Byte Displacement Deferred Mode
+        ; The following instruction takes the PC after it reads the `@B^-20`,
+        ; and then subracts 20 from it. It then uses the 32-bit address
+        ; stored at that location to access the 32-bit value and store it in
+        ; R2.
+        MOVL    @B^-20, R2              ; Byte Relative Deferred Mode (uses PC)
+```

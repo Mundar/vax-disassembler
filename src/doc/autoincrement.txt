@@ -1,0 +1,7 @@
+# Autoincrement Mode
+
+The autoincrement addressing mode uses the specified register as a pointer to
+memory to access the VAX data type, and then increases the value in the
+register to point to the byte after the VAX data type. It is identified by byte
+values 0x80 through 0x8E with the low nibble indicating which register is used.
+0x8F indicates the immediate addressing mode.

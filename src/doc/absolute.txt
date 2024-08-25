@@ -1,0 +1,5 @@
+# Absolute Mode
+
+The absolute adressing mode is used to access memory at a fixed address. It is
+identified by the byte value 0x9F followed by the 32-bit address to access
+memory in little-endian order.

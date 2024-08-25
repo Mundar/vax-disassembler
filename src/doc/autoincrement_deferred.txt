@@ -1,0 +1,7 @@
+# Autoincrement Deferred Mode
+
+The autoincrement deferred addressing mode uses the specified register as the
+32-bit address of a pointer to memory to access a VAX data type, and then
+increases the value in the register by 4 to point to the next 32-bit address.
+It is identified by byte values 0x90 through 0x9E with the low nibble
+indicating which register is used. 0x8F indicates the absolute addressing mode.

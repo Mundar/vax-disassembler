@@ -1,0 +1,5 @@
+# Immediate Mode
+
+The immediate mode is used to use a fixed value. It is identified by the byte
+value 0x8F followed by the number of bytes determined by the specified data
+type.

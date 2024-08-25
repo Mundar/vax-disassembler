@@ -1,0 +1,6 @@
+# Indexed
+
+The indexed addressing mode is used to access into an array of VAX data types.
+It is identified by byte values 0x40 through 0x4E with the low nibble
+indicating which register is used as the index value. 0x4F (which would use the
+PC) will trigger a reserved addressing mode fault.

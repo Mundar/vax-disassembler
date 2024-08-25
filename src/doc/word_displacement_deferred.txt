@@ -1,0 +1,25 @@
+# Word Displacement Deferred Mode
+
+The word displacement deferred addressing mode is used to access the data
+pointed to by an address stored in memory pointed to by a register with a
+signed word offset. It is identified by word values 0xD0 through 0xDF with the
+low nibble indicating the register. It is followed by the (16-bit) word-sized
+offset value.
+
+When the register is PC (0xDF), it is called word relative deferred mode. It
+uses the value of the PC register after it reads the operand and then adds the
+signed word offset to point to the 32-bit pointer which it uses to access the
+desired memory. When represented in MACRO32 assembly language, the `(PC)` is
+implied.
+
+```text
+        ; The following instruction takes the pointer in R0 and adds 1420 to
+        ; it. It then uses the 32-bit address stored at that location to
+        ; access the 32-bit value and store it in R1.
+        MOVL    @W^1420(R0), R1         ; Word Displacement Deferred Mode
+
+        ; The following instruction takes the PC after it reads the `@W^-5220`,
+        ; and then subracts 5220 from it. It then uses the 32-bit address stored
+        ; at that location to access the 32-bit value and store it in R2.
+        MOVL    @W^-5220, R2            ; Word Relative Deferred Mode (uses PC)
+```

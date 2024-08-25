@@ -1,0 +1,31 @@
+[package]
+name = "vax-disassembler"
+version = "0.1.0"
+authors = ["Thomas Mundar <thomas@mundar.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/Mundar/vax-disassembler"
+keywords = ["VAX", "disassembler"]
+categories = ["emulators", "development-tools::debugging"]
+edition = "2021"
+#rust-version = "1.67"
+description = "DEC VAX one-line disassembler"
+
+
+[dependencies]
+thiserror = "1.0.50"
+vax-floating = "0.1"
+
+[dev-dependencies]
+criterion = "0.5.1"
+phf = "0.11.2"
+proptest = "1.4.0"
+vax-floating = { version = "0.1", features = ["proptest"] }
+
+[build-dependencies]
+phf = { version = "0.11.2", default-features = false }
+phf_codegen = "0.11.2"
+
+[[bench]]
+name = "benchmarks"
+harness = false

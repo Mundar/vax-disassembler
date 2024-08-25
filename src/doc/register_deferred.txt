@@ -1,0 +1,6 @@
+# Register Deferred Mode
+
+The register deferred addressing mode is used to access the data pointed to by
+a register. It is identified by byte values 0x60 through 0x6E with the low
+nibble indicating the register. The behavior of 0x6F (which would use the
+PC) is unpredictable.

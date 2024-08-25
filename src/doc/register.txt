@@ -1,0 +1,13 @@
+# Register Mode
+
+The register addressing mode is used to access the data in registers. It is
+identified by byte values 0x50 through 0x5E with the low nibble indicating
+the starting register. Data types larger than 32-bits use multiple
+registers. 64-bit data types use the next higher register as the most
+significant 32-bits (e.g. A quadword at R0 uses R0 as the least significant
+32-bits and R1 as the most significant 32-bits). 128-bit data types use 4
+registers with the starting register being the least significant 32-bits.
+
+The behavior of 0x5F is always unpredictable. 0x5E is unpredictable for data
+types 64-bits and larger. 0x5C and 0x5D are unpredictable for 128-bit data
+types.

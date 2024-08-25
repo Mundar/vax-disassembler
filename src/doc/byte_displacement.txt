@@ -1,0 +1,16 @@
+# Byte Displacement Mode
+
+The byte displacement addressing mode is used to access the data pointed to by
+a register with a signed byte offset. It is identified by byte values 0xA0
+through 0xAF with the low nibble indicating the register. It is followed by the
+(8-bit) byte-sized offset value.
+
+When the register is PC (0xAF), it is called byte relative mode. It uses the
+value of the PC register after it reads the operand and then adds the signed
+byte offset. When represented in MACRO32 assembly language, the `(PC)` is
+implied.
+
+```text
+        MOVL    B^20(R0), R1            ; Byte Displacement Mode
+        MOVL    B^-20, R2               ; Byte Relative Mode (uses PC)
+```

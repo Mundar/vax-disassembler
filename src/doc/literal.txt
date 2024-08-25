@@ -1,0 +1,5 @@
+# Literal Mode
+
+Literal values are integer values that fit into 6 bits (0-63). They can be
+stored as one byte in machine code and are zero expanded to the specified
+interger data type.
