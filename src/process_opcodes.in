@@ -336,6 +336,8 @@ process_opcodes![
         (0x7E, MOVAG, (src.ag, dst.wl), "Move Address G_floating"),
         (0x7F, PUSHAD, (src.ad), "Push Address D_floating"),
         (0x7F, PUSHAG, (src.ag), "Push Address G_floating"),
+	// There is no POPL, but using POPL will encode into `MOVL (SP)+`.
+        (0x8ED0, POPL, (dst.wl), "Pop Long"),
         (0x7CFD, CLRH, (dst.wh), "Clear H_floating"),
         (0x7EFD, MOVAH, (src.ah, dst.wl), "Move Address H_floating"),
         (0x7FFD, PUSHAH, (src.ah), "Push Address H_floating"),

@@ -6,7 +6,10 @@ pub mod error;
 pub mod opcode;
 pub mod operand;
 
-use std::io::Read;
+use std::{
+    borrow::Borrow,
+    io::{Read, Write},
+};
 pub use crate::{
     error::{Error, Result},
     opcode::{
@@ -18,7 +21,7 @@ pub use crate::{
         Instruction,
         Opcode,
     },
-    operand::{IndexedOperand, Operand, ReadOperand, Register},
+    operand::{IndexedOperand, Operand, ReadOperand, Register, WriteOperand},
 };
 
 /// Extends [`Read`] with a method to read a VAX instruction ([`Instruction`]).
@@ -87,6 +90,115 @@ pub trait ReadMacro32: Read {
 
 /// All types that implement `Read` get methods defined in `ReadMacro32` for free.
 impl<R: Read + ?Sized> ReadMacro32 for R {}
+
+/// Extends [`Write`] with a method to write a VAX instruction ([`Instruction`]).
+///
+/// # Examples
+///
+/// ```rust
+/// use vax_disassembler::{
+///     DataValue,
+///     IndexedOperand,
+///     Instruction,
+///     Operand,
+///     Register,
+///     WriteInstruction,
+/// };
+/// use std::io::Cursor;
+///
+/// macro_rules! assemble {
+///     ($buf: expr, $instruction: expr) => {
+///         let mut buf = Vec::new();
+///         buf.write_instruction(&$instruction);
+///         assert_eq!(&buf, &$buf);
+///     };
+/// }
+///
+/// assemble!([0x05], Instruction::RSB([]));
+/// assemble!([0xE9, 0x50, 0x15], Instruction::BLBC([
+///     Operand::Register(Register::R0),
+///     Operand::Branch(DataValue::Byte(21))]));
+/// assemble!([0xDE, 0x44, 0xC4, 0x00, 0xFE, 0x55],
+///     Instruction::MOVAL([
+///         Operand::Indexed(IndexedOperand::WordDisplacement(-512, Register::R4), Register::R4),
+///         Operand::Register(Register::R5)]));
+/// assemble!([0xCB, 0x8F, 0xFF, 0xFF, 0xFF, 0x00, 0x50, 0x53],
+///     Instruction::BICL3([
+///         Operand::Immediate(DataValue::Longword(16777215)),
+///         Operand::Register(Register::R0),
+///         Operand::Register(Register::R3)]));
+/// assemble!([0x28, 0x8F, 0x00, 0x02, 0x61, 0xC1, 0x00, 0xFE],
+///     Instruction::MOVC3([
+///         Operand::Immediate(DataValue::Word(512)),
+///         Operand::RegisterDeferred(Register::R1),
+///         Operand::WordDisplacement(-512, Register::R1)]));
+/// ```
+pub trait WriteInstruction: Write {
+    /// Write VAX MACRO32 machine code to a writer and assemble it from a single
+    /// [`Instruction`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use vax_disassembler::{
+    ///     DataValue,
+    ///     IndexedOperand,
+    ///     Instruction,
+    ///     Operand,
+    ///     Register,
+    ///     WriteInstruction,
+    /// };
+    /// use std::io::Cursor;
+    ///
+    /// macro_rules! assemble {
+    ///     ($buf: expr, $instruction: expr) => {
+    ///         let mut buf = Vec::new();
+    ///         buf.write_instruction($instruction);
+    ///         assert_eq!(&buf, &$buf);
+    ///     };
+    /// }
+    ///
+    /// assemble!([0x01], Instruction::NOP([]));
+    /// assemble!([0x30, 0x00, 0xFE], Instruction::BSBW([Operand::Branch(DataValue::Word(-512))]));
+    /// assemble!([0xDE, 0x44, 0x64, 0x55],
+    ///     Instruction::MOVAL([Operand::Indexed(
+    ///             IndexedOperand::RegisterDeferred(Register::R4), Register::R4
+    ///         ),
+    ///         Operand::Register(Register::R5)]));
+    /// assemble!([0xEF, 0x0C, 0x14, 0x56, 0x57],
+    ///     Instruction::EXTZV([
+    ///         Operand::Literal(12),
+    ///         Operand::Literal(20),
+    ///         Operand::Register(Register::R6),
+    ///         Operand::Register(Register::R7)]));
+    /// assemble!([0x2C, 0x50, 0x61, 0x20, 0x52, 0x63],
+    ///     Instruction::MOVC5([
+    ///         Operand::Register(Register::R0),
+    ///         Operand::RegisterDeferred(Register::R1),
+    ///         Operand::Literal(32),
+    ///         Operand::Register(Register::R2),
+    ///         Operand::RegisterDeferred(Register::R3)]));
+    /// ```
+    fn write_instruction<I: Borrow<Instruction>>(&mut self, instruction: I) -> Result<usize> {
+        let instruction = instruction.borrow();
+        let opcode = u16::from(&instruction.opcode()).to_le_bytes();
+        let mut write_size = if 0 == opcode[1] {
+            self.write_all(&opcode[0..1])?;
+            1
+        }
+        else {
+            self.write_all(&opcode)?;
+            2
+        };
+        for operand in instruction.operands().iter() {
+            write_size += self.write_operand(operand)?;
+        }
+        Ok(write_size)
+    }
+}
+
+/// All types that implement `Write` get methods defined in `WriteInstruction` for free.
+impl<W: Write + ?Sized> WriteInstruction for W {}
 
 #[cfg(test)]
 mod tests {

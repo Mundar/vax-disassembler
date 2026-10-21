@@ -1,13 +1,14 @@
 //! # MACRO32 Operands
 
 use std::{
+    borrow::Borrow,
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    io::Read,
+    io::{Read, Write},
 };
 use crate::{
     error::{Error, Result},
-    opcode::{AccessType, DataType, DataValue, ReadDataValue},
+    opcode::{AccessType, DataType, DataValue, ReadDataValue, WriteDataValue},
 };
 
 macro_rules! define_registers {
@@ -341,6 +342,28 @@ impl From<u8> for OperandType {
             0xD0..=0xDF => OperandType::WordDisplacementDeferred(Register::from(value)),
             0xE0..=0xEF => OperandType::LongwordDisplacement(Register::from(value)),
             0xF0..=0xFF => OperandType::LongwordDisplacementDeferred(Register::from(value)),
+        }
+    }
+}
+
+impl From<OperandType> for u8 {
+    fn from(operand_type: OperandType) -> u8 {
+        match operand_type {
+            OperandType::Literal(value) => value,
+            OperandType::Indexed(reg) => 0x40 + (reg as u8),
+            OperandType::Register(reg) => 0x50 + (reg as u8),
+            OperandType::RegisterDeferred(reg) => 0x60 + (reg as u8),
+            OperandType::AutoDecrement(reg) => 0x70 + (reg as u8),
+            OperandType::AutoIncrement(reg) => 0x80 + (reg as u8),
+            OperandType::Immediate => 0x8F,
+            OperandType::AutoIncrementDeferred(reg) => 0x90 + (reg as u8),
+            OperandType::Absolute => 0x9F,
+            OperandType::ByteDisplacement(reg) => 0xA0 + (reg as u8),
+            OperandType::ByteDisplacementDeferred(reg) => 0xB0 + (reg as u8),
+            OperandType::WordDisplacement(reg) => 0xC0 + (reg as u8),
+            OperandType::WordDisplacementDeferred(reg) => 0xD0 + (reg as u8),
+            OperandType::LongwordDisplacement(reg) => 0xE0 + (reg as u8),
+            OperandType::LongwordDisplacementDeferred(reg) => 0xF0 + (reg as u8),
         }
     }
 }
@@ -697,6 +720,50 @@ pub enum Operand {
     Branch(DataValue),
 }
 
+impl Operand {
+    /// The length of the operand in bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use vax_disassembler::opcode::DataValue;
+    /// use vax_disassembler::operand::{IndexedOperand, Operand, Register};
+    /// use vax_floating::{FFloating, DFloating, GFloating, HFloating};
+    ///
+    /// assert_eq!(Operand::Indexed(
+    ///     IndexedOperand::LongwordDisplacement(1234567, Register::R0), Register::R1).len(), 6);
+    /// assert_eq!(Operand::Literal(42).len(), 1);
+    /// assert_eq!(Operand::Register(Register::R0).len(), 1);
+    /// assert_eq!(Operand::RegisterDeferred(Register::R1).len(), 1);
+    /// assert_eq!(Operand::AutoDecrement(Register::SP).len(), 1);
+    /// assert_eq!(Operand::ByteDisplacement(-58, Register::R10).len(), 2);
+    /// assert_eq!(Operand::LongwordDisplacement(-58697081, Register::R6).len(), 5);
+    /// assert_eq!(Operand::Immediate(DataValue::Quadword(i64::MAX)).len(), 9);
+    /// ```
+    pub const fn len(&self) -> usize {
+        use Operand::*;
+        match self {
+            Undefined => 0,
+            Literal(_) => 1,
+            Indexed(operand, _) => 1 + operand.len(),
+            Register(_) => 1,
+            RegisterDeferred(_) => 1,
+            AutoDecrement(_) => 1,
+            AutoIncrement(_) => 1,
+            AutoIncrementDeferred(_) => 1,
+            ByteDisplacement(_, _) => 2,
+            ByteDisplacementDeferred(_, _) => 2,
+            WordDisplacement(_, _) => 3,
+            WordDisplacementDeferred(_, _) => 3,
+            LongwordDisplacement(_, _) => 5,
+            LongwordDisplacementDeferred(_, _) => 5,
+            Immediate(value) => 1 + value.len(),
+            Absolute(_) => 5,
+            Branch(value) => value.len(),
+        }
+    }
+}
+
 /// # VAX Instruction Indexed Operand
 ///
 /// This enum specifies all of the valid VAX instruction operands that can be part of an indexed
@@ -982,6 +1049,41 @@ pub enum IndexedOperand {
     Absolute(u32),
 }
 
+impl IndexedOperand {
+    /// The length of the operand in bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use vax_disassembler::opcode::DataValue;
+    /// use vax_disassembler::operand::{IndexedOperand, Register};
+    /// use vax_floating::{FFloating, DFloating, GFloating, HFloating};
+    ///
+    /// assert_eq!(IndexedOperand::RegisterDeferred(Register::R1).len(), 1);
+    /// assert_eq!(IndexedOperand::AutoDecrement(Register::SP).len(), 1);
+    /// assert_eq!(IndexedOperand::ByteDisplacement(-58, Register::R10).len(), 2);
+    /// assert_eq!(IndexedOperand::LongwordDisplacement(-58697081, Register::R6).len(), 5);
+    /// assert_eq!(IndexedOperand::LongwordDisplacement(1234567, Register::R0).len(), 5);
+    /// assert_eq!(IndexedOperand::Absolute(0x81234567).len(), 5);
+    /// ```
+    pub const fn len(&self) -> usize {
+        use IndexedOperand::*;
+        match self {
+            RegisterDeferred(_) => 1,
+            AutoDecrement(_) => 1,
+            AutoIncrement(_) => 1,
+            AutoIncrementDeferred(_) => 1,
+            ByteDisplacement(_, _) => 2,
+            ByteDisplacementDeferred(_, _) => 2,
+            WordDisplacement(_, _) => 3,
+            WordDisplacementDeferred(_, _) => 3,
+            LongwordDisplacement(_, _) => 5,
+            LongwordDisplacementDeferred(_, _) => 5,
+            Absolute(_) => 5,
+        }
+    }
+}
+
 impl TryFrom<Operand> for IndexedOperand {
     type Error = Error;
 
@@ -1061,7 +1163,20 @@ impl Display for Operand {
 
 impl Display for IndexedOperand {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Operand::from(*self).fmt(f)
+        use IndexedOperand::*;
+        match self {
+            RegisterDeferred(reg) => write!(f, "({})", reg),
+            AutoDecrement(reg) => write!(f, "-({0})", reg),
+            AutoIncrement(reg) => write!(f, "({0})+", reg),
+            AutoIncrementDeferred(reg) => write!(f, "@({0})+", reg),
+            ByteDisplacement(value, reg) => display_no_pc(f, "B^", value, reg),
+            ByteDisplacementDeferred(value, reg) => display_no_pc(f, "@B^", value, reg),
+            WordDisplacement(value, reg) => display_no_pc(f, "W^", value, reg),
+            WordDisplacementDeferred(value, reg) => display_no_pc(f, "@W^", value, reg),
+            LongwordDisplacement(value, reg) => display_no_pc(f, "L^", value, reg),
+            LongwordDisplacementDeferred(value, reg) => display_no_pc(f, "@L^", value, reg),
+            Absolute(value) => write!(f, "@#{0}", value),
+        }
     }
 }
 
@@ -1172,15 +1287,151 @@ pub trait ReadOperand: Read + ReadDataValue {
 /// All types that implement `Read` get methods defined in `ReadMacro32` for free.
 impl<R: Read + ?Sized> ReadOperand for R {}
 
+/// Extends [`Write`] with a method to write a VAX operand ([`Operand`]).
+///
+/// # Examples
+///
+/// ```rust
+/// use vax_disassembler::opcode::{AccessType, DataType, DataValue};
+/// use vax_disassembler::operand::{IndexedOperand, Operand, ReadOperand, Register, WriteOperand};
+/// use std::io::Cursor;
+///
+/// macro_rules! test_write_operand {
+///     ($operand: expr) => {
+///         let expected_len = $operand.len();
+///         // Write the operand into a buffer.
+///         let mut buf = Vec::new();
+///         assert_eq!(buf.write_operand($operand).unwrap(), expected_len);
+///         // Verify the length of the output.
+///         assert_eq!(buf.len(), expected_len);
+///         // Verify that the read converts back to the original.
+///         let output_operand =
+///             Cursor::new(buf).read_operand(AccessType::Read, DataType::Byte).unwrap();
+///         assert_eq!($operand, output_operand);
+///     };
+/// }
+///
+/// test_write_operand!(Operand::Register(Register::R5));
+/// test_write_operand!(Operand::Indexed(IndexedOperand::ByteDisplacement(80, Register::R8),
+///     Register::R9));
+/// test_write_operand!(Operand::RegisterDeferred(Register::R6));
+/// test_write_operand!(Operand::AutoDecrement(Register::SP));
+/// test_write_operand!(Operand::AutoIncrement(Register::R2));
+/// ```
+pub trait WriteOperand: Write + WriteDataValue {
+    /// Write out a `MACRO32` operand to a writer.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use vax_disassembler::operand::{Operand, ReadOperand, Register, WriteOperand};
+    /// use vax_disassembler::opcode::{AccessType, DataType, DataValue};
+    /// use std::io::Write;
+    ///
+    /// for byte_branch in i8::MIN..=i8::MAX {
+    ///     let mut buf = Vec::new();
+    ///     assert_eq!(buf.write_operand(&Operand::Branch(DataValue::Byte(byte_branch))).unwrap(), 1);
+    ///     assert_eq!(&buf, &[byte_branch as u8]);
+    /// }
+    /// for literal in 0_u8..=63 {
+    ///     let mut buf = Vec::new();
+    ///     assert_eq!(buf.write_operand(&Operand::Literal(literal)).unwrap(), 1);
+    ///     assert_eq!(&buf, &[literal]);
+    /// }
+    /// for reg in 0x50..=0x5E {
+    ///     let mut buf = Vec::new();
+    ///     assert_eq!(buf.write_operand(&Operand::Register(Register::from(reg))).unwrap(), 1);
+    ///     assert_eq!(&buf, &[reg]);
+    /// }
+    /// ```
+    fn write_operand<O: Borrow<Operand>>(&mut self, operand: O) -> Result<usize> {
+        use Operand::*;
+        match operand.borrow() {
+            Undefined => Err(Error::CantWriteUndefined),
+            Literal(value) => {
+                self.write_all(&[*value])?;
+                Ok(1)
+            }
+            Indexed(operand, reg) => {
+                self.write_all(&[0x40 + (*reg as u8)])?;
+                Ok(1 + self.write_operand(&Operand::from(*operand))?)
+            }
+            Register(reg) => {
+                self.write_all(&[0x50 + (*reg as u8)])?;
+                Ok(1)
+            }
+            RegisterDeferred(reg) => {
+				self.write_all(&[0x60 + (*reg as u8)])?;
+				Ok(1)
+			}
+            AutoDecrement(reg) => {
+				self.write_all(&[0x70 + (*reg as u8)])?;
+				Ok(1)
+			}
+            AutoIncrement(reg) => {
+				self.write_all(&[0x80 + (*reg as u8)])?;
+				Ok(1)
+			}
+            AutoIncrementDeferred(reg) => {
+				self.write_all(&[0x90 + (*reg as u8)])?;
+				Ok(1)
+			}
+            ByteDisplacement(offset, reg) => {
+				self.write_all(&[0xA0 + (*reg as u8), *offset as u8])?;
+				Ok(2)
+			}
+            ByteDisplacementDeferred(offset, reg) => {
+                self.write_all(&[0xB0 + (*reg as u8), *offset as u8])?;
+                Ok(2)
+            }
+            WordDisplacement(offset, reg) => {
+                self.write_all(&[0xC0 + (*reg as u8)])?;
+                self.write_all(&offset.to_le_bytes())?;
+                Ok(3)
+            }
+            WordDisplacementDeferred(offset, reg) => {
+                self.write_all(&[0xD0 + (*reg as u8)])?;
+                self.write_all(&offset.to_le_bytes())?;
+                Ok(3)
+            }
+            LongwordDisplacement(offset, reg) => {
+                self.write_all(&[0xE0 + (*reg as u8)])?;
+                self.write_all(&offset.to_le_bytes())?;
+                Ok(5)
+            }
+            LongwordDisplacementDeferred(offset, reg) => {
+                self.write_all(&[0xF0 + (*reg as u8)])?;
+                self.write_all(&offset.to_le_bytes())?;
+                Ok(5)
+            }
+            Immediate(value) => {
+                self.write_all(&[0x8F])?;
+                Ok( 1 + self.write_data_value(*value)?)
+            }
+            Absolute(address) => {
+                self.write_all(&[0x9F])?;
+                self.write_all(&address.to_le_bytes())?;
+                Ok(5)
+            }
+            Branch(value) => {
+                self.write_data_value(*value)
+            }
+        }
+    }
+}
+
+/// All types that implement `Write` get methods defined in `ReadMacro32` for free.
+impl<W: Write + ?Sized> WriteOperand for W {}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    // Get data_value() strategy.
+    // Get data_value() and data_value_any() strategies.
     use crate::opcode::{
         WriteDataValue,
-        data_value_tests::data_value,
+        data_value_tests::{data_value_any, data_value},
     };
 
     const OPTYP_STD: usize = 36;
@@ -1232,7 +1483,7 @@ mod tests {
     }
 
     prop_compose! {
-        fn literal()(
+        fn literal_any()(
             literal in 0_u8..=63,
             (access, size) in operand_type(OPTYP_LITERAL),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1241,7 +1492,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn register()(
+        fn literal()(
+            literal in 0_u8..=63,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::Literal(literal), vec![literal])
+        }
+    }
+
+    prop_compose! {
+        fn register_any()(
             register in 0x50_u8..=0x5E,
             (access, size) in operand_type(OPTYP_REGISTER),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1250,7 +1509,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn register_deferred()(
+        fn register()(
+            register in 0x50_u8..=0x5E,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::Register(Register::from(register)), vec![register])
+        }
+    }
+
+    prop_compose! {
+        fn register_deferred_any()(
             register in 0x60_u8..=0x6E,
             (access, size) in operand_type(OPTYP_STD),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1259,7 +1526,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn auto_decrement()(
+        fn register_deferred()(
+            register in 0x60_u8..=0x6E,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::RegisterDeferred(Register::from(register)), vec![register])
+        }
+    }
+
+    prop_compose! {
+        fn auto_decrement_any()(
             register in 0x70_u8..=0x7E,
             (access, size) in operand_type(OPTYP_STD),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1268,7 +1543,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn auto_increment()(
+        fn auto_decrement()(
+            register in 0x70_u8..=0x7E,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::AutoDecrement(Register::from(register)), vec![register])
+        }
+    }
+
+    prop_compose! {
+        fn auto_increment_any()(
             register in 0x80_u8..=0x8E,
             (access, size) in operand_type(OPTYP_STD),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1277,7 +1560,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn auto_increment_deferred()(
+        fn auto_increment()(
+            register in 0x80_u8..=0x8E,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::AutoIncrement(Register::from(register)), vec![register])
+        }
+    }
+
+    prop_compose! {
+        fn auto_increment_deferred_any()(
             register in 0x90_u8..=0x9E,
             (access, size) in operand_type(OPTYP_STD),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1286,7 +1577,15 @@ mod tests {
     }
 
     prop_compose! {
-        fn byte_displacement()(
+        fn auto_increment_deferred()(
+            register in 0x90_u8..=0x9E,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::AutoIncrementDeferred(Register::from(register)), vec![register])
+        }
+    }
+
+    prop_compose! {
+        fn byte_displacement_any()(
             register in 0xA0_u8..=0xAF,
             disp in i8::MIN..=i8::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1296,7 +1595,16 @@ mod tests {
     }
 
     prop_compose! {
-        fn byte_displacement_deferred()(
+        fn byte_displacement()(
+            register in 0xA0_u8..=0xAF,
+            disp in i8::MIN..=i8::MAX,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::ByteDisplacement(disp, Register::from(register)), vec![register, disp as u8])
+        }
+    }
+
+    prop_compose! {
+        fn byte_displacement_deferred_any()(
             register in 0xB0_u8..=0xBF,
             disp in i8::MIN..=i8::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1306,7 +1614,16 @@ mod tests {
     }
 
     prop_compose! {
-        fn word_displacement()(
+        fn byte_displacement_deferred()(
+            register in 0xB0_u8..=0xBF,
+            disp in i8::MIN..=i8::MAX,
+        ) -> (Operand, Vec<u8>) {
+            (Operand::ByteDisplacementDeferred(disp, Register::from(register)), vec![register, disp as u8])
+        }
+    }
+
+    prop_compose! {
+        fn word_displacement_any()(
             register in 0xC0_u8..=0xCF,
             disp in i16::MIN..=i16::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1319,7 +1636,19 @@ mod tests {
     }
 
     prop_compose! {
-        fn word_displacement_deferred()(
+        fn word_displacement()(
+            register in 0xC0_u8..=0xCF,
+            disp in i16::MIN..=i16::MAX,
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::with_capacity(3);
+            buf.push(register);
+            buf.extend_from_slice(&disp.to_le_bytes());
+            (Operand::WordDisplacement(disp, Register::from(register)), buf)
+        }
+    }
+
+    prop_compose! {
+        fn word_displacement_deferred_any()(
             register in 0xD0_u8..=0xDF,
             disp in i16::MIN..=i16::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1332,7 +1661,19 @@ mod tests {
     }
 
     prop_compose! {
-        fn longword_displacement()(
+        fn word_displacement_deferred()(
+            register in 0xD0_u8..=0xDF,
+            disp in i16::MIN..=i16::MAX,
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::with_capacity(3);
+            buf.push(register);
+            buf.extend_from_slice(&disp.to_le_bytes());
+            (Operand::WordDisplacementDeferred(disp, Register::from(register)), buf)
+        }
+    }
+
+    prop_compose! {
+        fn longword_displacement_any()(
             register in 0xE0_u8..=0xEF,
             disp in i32::MIN..=i32::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1345,7 +1686,19 @@ mod tests {
     }
 
     prop_compose! {
-        fn longword_displacement_deferred()(
+        fn longword_displacement()(
+            register in 0xE0_u8..=0xEF,
+            disp in i32::MIN..=i32::MAX,
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::with_capacity(5);
+            buf.push(register);
+            buf.extend_from_slice(&disp.to_le_bytes());
+            (Operand::LongwordDisplacement(disp, Register::from(register)), buf)
+        }
+    }
+
+    prop_compose! {
+        fn longword_displacement_deferred_any()(
             register in 0xF0_u8..=0xFF,
             disp in i32::MIN..=i32::MAX,
             (access, size) in operand_type(OPTYP_STD),
@@ -1358,7 +1711,19 @@ mod tests {
     }
 
     prop_compose! {
-        fn absolute()(
+        fn longword_displacement_deferred()(
+            register in 0xF0_u8..=0xFF,
+            disp in i32::MIN..=i32::MAX,
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::with_capacity(5);
+            buf.push(register);
+            buf.extend_from_slice(&disp.to_le_bytes());
+            (Operand::LongwordDisplacementDeferred(disp, Register::from(register)), buf)
+        }
+    }
+
+    prop_compose! {
+        fn absolute_any()(
             disp in u32::MIN..=u32::MAX,
             (access, size) in operand_type(OPTYP_STD),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1368,25 +1733,35 @@ mod tests {
             (Operand::Absolute(disp), buf, access, size)
         }
     }
+    prop_compose! {
+        fn absolute()(
+            disp in u32::MIN..=u32::MAX,
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::with_capacity(5);
+            buf.push(0x9F);
+            buf.extend_from_slice(&disp.to_le_bytes());
+            (Operand::Absolute(disp), buf)
+        }
+    }
 
     fn indexable_operand() -> BoxedStrategy<(Operand, Vec<u8>, AccessType, DataType)> {
         prop_oneof![
-            register_deferred(),
-            auto_decrement(),
-            auto_increment(),
-            auto_increment_deferred(),
-            byte_displacement(),
-            byte_displacement_deferred(),
-            word_displacement(),
-            word_displacement_deferred(),
-            longword_displacement(),
-            longword_displacement_deferred(),
-            absolute(),
+            register_deferred_any(),
+            auto_decrement_any(),
+            auto_increment_any(),
+            auto_increment_deferred_any(),
+            byte_displacement_any(),
+            byte_displacement_deferred_any(),
+            word_displacement_any(),
+            word_displacement_deferred_any(),
+            longword_displacement_any(),
+            longword_displacement_deferred_any(),
+            absolute_any(),
         ].boxed()
     }
 
     prop_compose! {
-        fn indexed()(
+        fn indexed_any()(
             (i_operand, i_buf, access, size) in indexable_operand(),
             mut register in 0x40_u8..=0x4E,
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
@@ -1420,8 +1795,42 @@ mod tests {
     }
 
     prop_compose! {
-        fn immediate()(
-            value in data_value(),
+        fn indexed()(
+            (i_operand, i_buf, _access, _size) in indexable_operand(),
+            mut register in 0x40_u8..=0x4E,
+        ) -> (Operand, Vec<u8>) {
+            let i_operand = match IndexedOperand::try_from(i_operand) {
+                Ok(op) => op,
+                // This should never happen. Default to basic operand.
+                Err(_) => IndexedOperand::RegisterDeferred(Register::R0),
+            };
+            match i_operand {
+                IndexedOperand::AutoDecrement(i_reg) |
+                IndexedOperand::AutoIncrement(i_reg) |
+                IndexedOperand::AutoIncrementDeferred(i_reg) => {
+                    if i_reg == Register::from(register) {
+                        // If index register is the same as the indexed register, wrap around to a
+                        // different register.
+                        if 0x4E == register {
+                            register = 0x40;
+                        }
+                        else {
+                            register += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let mut buf = Vec::with_capacity(1 + i_buf.len());
+            buf.push(register);
+            buf.extend_from_slice(&i_buf);
+            (Operand::Indexed(i_operand, Register::from(register)), buf)
+        }
+    }
+
+    prop_compose! {
+        fn immediate_any()(
+            value in data_value_any(),
         ) -> (Operand, Vec<u8>, AccessType, DataType) {
             let mut buf = Vec::new();
             buf.push(0x8F);
@@ -1430,34 +1839,67 @@ mod tests {
         }
     }
 
-    fn branch() -> impl Strategy<Value = (Operand, Vec<u8>, AccessType, DataType)> {
+    prop_compose! {
+        fn immediate(data_type: DataType)(
+            value in data_value(data_type),
+        ) -> (Operand, Vec<u8>) {
+            let mut buf = Vec::new();
+            buf.push(0x8F);
+            let _ = buf.write_data_value(value); // Ignore any error.
+            (Operand::Immediate(value), buf)
+        }
+    }
+
+    fn branch_any() -> impl Strategy<Value = (Operand, Vec<u8>, AccessType, DataType)> {
         prop_oneof![
             any::<i8>().prop_map(|x| (
                 Operand::Branch(DataValue::Byte(x)),
                 vec![x as u8],
                 AccessType::Branch,
                 DataType::Byte)),
+            any::<i16>().prop_map(|x| (
+                Operand::Branch(DataValue::Word(x)),
+                x.to_le_bytes().to_vec(),
+                AccessType::Branch,
+                DataType::Word)),
+            any::<i32>().prop_map(|x| (
+                Operand::Branch(DataValue::Longword(x)),
+                x.to_le_bytes().to_vec(),
+                AccessType::Branch,
+                DataType::Longword)),
         ]
     }
 
-    fn valid_operand() -> BoxedStrategy<(Operand, Vec<u8>, AccessType, DataType)> {
+    fn branch(data_type: DataType) -> BoxedStrategy<(Operand, Vec<u8>)> {
+        match data_type {
+            DataType::Byte => any::<i8>().prop_map(|x| (
+                Operand::Branch(DataValue::Byte(x)), vec![x as u8])).boxed(),
+            DataType::Word => any::<i16>().prop_map(|x| (
+                Operand::Branch(DataValue::Word(x)), x.to_le_bytes().to_vec())).boxed(),
+            DataType::Longword => any::<i32>().prop_map(|x| (
+                Operand::Branch(DataValue::Longword(x)), x.to_le_bytes().to_vec())).boxed(),
+            _ => any::<i8>().prop_map(|_| (Operand::Undefined, Vec::new())).boxed(),
+        }
+    }
+
+    pub(crate) fn valid_operand() -> BoxedStrategy<(Operand, Vec<u8>, AccessType, DataType)> {
         prop_oneof![
-            literal(),
-            indexed(),
-            register(),
-            register_deferred(),
-            auto_decrement(),
-            auto_increment(),
-            auto_increment_deferred(),
-            byte_displacement(),
-            byte_displacement_deferred(),
-            word_displacement(),
-            word_displacement_deferred(),
-            longword_displacement(),
-            longword_displacement_deferred(),
-            immediate(),
-            absolute(),
-            branch(),
+            literal_any(),
+            indexed_any(),
+            register_any(),
+            register_deferred_any(),
+            auto_decrement_any(),
+            auto_increment_any(),
+            auto_increment_deferred_any(),
+            byte_displacement_any(),
+            byte_displacement_deferred_any(),
+            word_displacement_any(),
+            word_displacement_deferred_any(),
+            longword_displacement_any(),
+            longword_displacement_deferred_any(),
+            immediate_any(),
+            absolute_any(),
+            branch_any(),
         ].boxed()
     }
 
@@ -1466,6 +1908,111 @@ mod tests {
         fn valid_read_operands((operand, input, access, size) in valid_operand()) {
             let mut reader = std::io::Cursor::new(input);
             prop_assert_eq!(reader.read_operand(access, size)?, operand);
+        }
+    }
+
+    proptest! {
+        #[test]
+        #[ignore]
+        // This isn't a test. It is to manually verify that valid_operand() is working properly.
+        fn print_valid_operands((operand, input, access, size) in valid_operand()) {
+            static mut FIRST_TIME: bool = true;
+            if unsafe { FIRST_TIME } {
+                use std::{thread::sleep, time::Duration};
+                // Wait for other tests to finish. . .
+                sleep(Duration::from_millis(100));
+                unsafe { FIRST_TIME = false; }
+            }
+            let print_access = format!("{:?}", access);
+            let spaces = 18 - print_access.len();
+            let print_size = format!("{:?}", size);
+            let spaces2 = 11 - print_size.len();
+            let print_input = format!("{:X?}", input);
+            let spaces3 = ((17*4)+1) - print_input.len();
+            println!("{0}{4:spaces$}{1}{4:spaces2$}{2}{4:spaces3$}{3}", print_access,
+                print_size, print_input, operand, "");
+        }
+    }
+
+    proptest!{
+        #[test]
+        fn valid_write_operands((operand, output, _access, _size) in valid_operand()) {
+            let mut writer = Vec::<u8>::new();
+            assert_eq!(writer.write_operand(&operand).unwrap(), operand.len());
+            prop_assert_eq!(writer, output);
+        }
+    }
+
+    proptest!{
+        #[test]
+        fn verify_operand_len((operand, input, _access, _size) in valid_operand()) {
+            assert_eq!(operand.len(), input.len());
+        }
+    }
+
+    pub(crate) fn operand(access: AccessType, data_type: DataType) -> BoxedStrategy<(Operand, Vec<u8>)> {
+        match access {
+            AccessType::Read => {
+                prop_oneof![
+                    literal(),
+                    indexed(),
+                    register(),
+                    register_deferred(),
+                    auto_decrement(),
+                    auto_increment(),
+                    auto_increment_deferred(),
+                    byte_displacement(),
+                    byte_displacement_deferred(),
+                    word_displacement(),
+                    word_displacement_deferred(),
+                    longword_displacement(),
+                    longword_displacement_deferred(),
+                    immediate(data_type),
+                    absolute(),
+                ].boxed()
+            }
+            AccessType::Branch => branch(data_type),
+            AccessType::Address => {
+                prop_oneof![
+                    indexed(),
+                    register_deferred(),
+                    auto_decrement(),
+                    auto_increment(),
+                    auto_increment_deferred(),
+                    byte_displacement(),
+                    byte_displacement_deferred(),
+                    word_displacement(),
+                    word_displacement_deferred(),
+                    longword_displacement(),
+                    longword_displacement_deferred(),
+                    absolute(),
+                ].boxed()
+            }
+            _ => {
+                prop_oneof![
+                    indexed(),
+                    register(),
+                    register_deferred(),
+                    auto_decrement(),
+                    auto_increment(),
+                    auto_increment_deferred(),
+                    byte_displacement(),
+                    byte_displacement_deferred(),
+                    word_displacement(),
+                    word_displacement_deferred(),
+                    longword_displacement(),
+                    longword_displacement_deferred(),
+                    absolute(),
+                ].boxed()
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_read_access_operands((operand, input) in operand(AccessType::Read, DataType::Longword)) {
+            let mut reader = std::io::Cursor::new(input);
+            prop_assert_eq!(reader.read_operand(AccessType::Read, DataType::Longword)?, operand);
         }
     }
 }

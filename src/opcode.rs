@@ -47,7 +47,7 @@ pub enum AccessType {
 }
 
 macro_rules! define_data_functions {
-    ($(($desc: ident, $count: expr, $out: ty),)+) => {
+    ($(($desc: ident, $count: expr, $out: ty, $display: literal),)+) => {
         /// # VAX Data Types
         #[derive(Copy, Clone, Debug, PartialEq, Eq)]
         pub enum DataType {
@@ -82,10 +82,31 @@ macro_rules! define_data_functions {
                     "::MAX).data_type(), DataType::", stringify!($desc), ");")]
             )+
             /// ```
-            pub fn data_type(&self) -> DataType {
+            pub const fn data_type(&self) -> DataType {
                 match self {
                     $(
                     DataValue::$desc(_) => DataType::$desc,
+                    )+
+                }
+            }
+
+            /// Return the size in bytes for this `DataValue`.
+            ///
+            /// # Examples
+            ///
+            /// ```rust
+            /// use vax_disassembler::opcode::DataValue;
+            /// use vax_floating::{FFloating, DFloating, GFloating, HFloating};
+            ///
+            $(
+                #[doc = concat!("assert_eq!(DataValue::", stringify!($desc), "(", stringify!($out),
+                    "::MAX).len(), ", stringify!($count), ");")]
+            )+
+            /// ```
+            pub const fn len(&self) -> usize {
+                match self {
+                    $(
+                    DataValue::$desc(_) => $count,
                     )+
                 }
             }
@@ -95,7 +116,7 @@ macro_rules! define_data_functions {
             fn fmt(&self, f: &mut Formatter) -> fmt::Result {
                 match self {
                     $(
-                    DataValue::$desc(value) => value.fmt(f),
+                    DataValue::$desc(value) => write!(f, $display, value),
                     )+
                 }
             }
@@ -200,14 +221,14 @@ macro_rules! define_data_functions {
             ///     assert_eq!(&writer, &longword.to_le_bytes());
             /// }
             /// ```
-            fn write_data_value(&mut self, data_value: DataValue) -> Result<()> {
+            fn write_data_value(&mut self, data_value: DataValue) -> Result<usize> {
                 match data_value {
                     $(
                         DataValue::$desc(value) => {
                             let mut buf = [0; $count];
                             buf.copy_from_slice(&value.to_le_bytes());
                             self.write_all(&buf)?;
-                            Ok(())
+                            Ok($count)
                         }
                     )+
                 }
@@ -222,27 +243,35 @@ macro_rules! define_data_functions {
             use super::*;
             use proptest::prelude::*;
 
-            pub fn data_value() -> impl Strategy<Value = DataValue> {
+            pub fn data_value_any() -> impl Strategy<Value = DataValue> {
                 prop_oneof![
                     $(
                         any::<$out>().prop_map(DataValue::$desc),
                     )+
                 ]
             }
+
+            pub fn data_value(data_type: DataType) -> BoxedStrategy<DataValue> {
+                match data_type {
+                    $(
+                        DataType::$desc => any::<$out>().prop_map(DataValue::$desc).boxed(),
+                    )+
+                }
+            }
         }
     };
 }
 
 define_data_functions!{
-    (Byte, 1, i8),
-    (Word, 2, i16),
-    (Longword, 4, i32),
-    (Quadword, 8, i64),
-    (Octoword, 16, i128),
-    (Floating, 4, FFloating),
-    (Double, 8, DFloating),
-    (GFloating, 8, GFloating),
-    (HFloating, 16, HFloating),
+    (Byte, 1, i8, "{}"),
+    (Word, 2, i16, "{}"),
+    (Longword, 4, i32, "{}"),
+    (Quadword, 8, i64, "{}"),
+    (Octoword, 16, i128, "{}"),
+    (Floating, 4, FFloating, "{:e}"),
+    (Double, 8, DFloating, "{:e}"),
+    (GFloating, 8, GFloating, "{:e}"),
+    (HFloating, 16, HFloating, "{:e}"),
 }
 
 macro_rules! operand_count {
@@ -369,6 +398,36 @@ macro_rules! operands_slice {
     ]};
 }
 
+#[allow(unused_macros)]  // Prevent it from whining about this test only macro.
+macro_rules! instruction_prop_compose {
+     ($word: literal, $opcode: ident, ()) => {
+         any::<bool>().prop_map(|_| {
+            let buf: Vec<u8> = if $word < 0x100 {
+                vec![$word as u8]
+            }
+            else {
+                ($word as u16).to_le_bytes().to_vec()
+            };
+            (Instruction::$opcode([]), buf)
+        })
+     };
+     ($word: literal, $opcode: ident, ($($name: ident.$spec: ident),+)) => {
+         ($(operand(access_type!($spec), data_type!($spec)),)+).prop_map(|($($name,)+)| {
+            let mut buf = Vec::new();
+            if $word < 0x100 {
+                buf.push(($word & 0xFF) as u8);
+            }
+            else {
+                buf.extend_from_slice(&($word as u16).to_le_bytes());
+            }
+            $(
+                buf.extend_from_slice(&$name.1);
+            )+
+            (Instruction::$opcode([$($name.0,)+]), buf)
+        })
+    };
+}
+
 macro_rules! process_opcodes {
     (opcodes: {$(($word: expr, $opcode: ident, $operands: tt, $desc: expr),)*},
      duplicates: {$(($dup_word: expr, $dup_opcode: ident, $dup_operands: tt, $dup_desc: expr),)*}) => {
@@ -412,7 +471,7 @@ macro_rules! process_opcodes {
             ///     (AccessType::Address, DataType::Byte),
             /// ]);
             /// ```
-            pub fn operand_specs(&self) -> &[(AccessType, DataType)] {
+            pub const fn operand_specs(&self) -> &[(AccessType, DataType)] {
                 use Opcode::*;
                 match self {
                     $(
@@ -424,10 +483,36 @@ macro_rules! process_opcodes {
                 }
             }
 
-            /// Internal function used by Display to place the number of spaces after the opcode.
-            fn tab(&self) -> &'static str {
+            /// The size in bytes of the Opcode.
+            ///
+            /// # Examples
+            ///
+            /// ```rust
+            /// use vax_disassembler::opcode::Opcode;
+            ///
+            /// assert_eq!(Opcode::NOP.len(), 1);
+            /// assert_eq!(Opcode::BPT.len(), 1);
+            /// assert_eq!(Opcode::CLRQ.len(), 1);
+            /// assert_eq!(Opcode::CLRD.len(), 1);
+            /// assert_eq!(Opcode::CLRO.len(), 2);
+            /// assert_eq!(Opcode::CLRH.len(), 2);
+            /// ```
+            pub const fn len(&self) -> usize {
                 use Opcode::*;
-                static SPACES: [&'static str; 8] = [
+                match self {
+                    $(
+                        $opcode => { if $word < 0x100 { 1 } else { 2 } }
+                    )*
+                    $(
+                        $dup_opcode => { if $dup_word < 0x100 { 1 } else { 2 } }
+                    )*
+                }
+            }
+
+            /// Internal function used by Display to place the number of spaces after the opcode.
+            const fn tab(&self) -> &'static str {
+                use Opcode::*;
+                const SPACES: [&'static str; 8] = [
                     "        ", "       ", "      ", "     ", "    ", "   ", "  ", " ",
                 ];
                 match self {
@@ -502,6 +587,34 @@ macro_rules! process_opcodes {
             }
         }
 
+        impl From<Opcode> for u16 {
+            /// Convert from a `Opcode` reference into the corresponding u16 value.
+            ///
+            /// # Examples
+            ///
+            /// ```rust
+            /// use vax_disassembler::opcode::{Opcode};
+            /// use std::convert::TryFrom;
+            ///
+            /// assert_eq!(u16::from(Opcode::NOP), 1);
+            /// assert_eq!(u16::from(Opcode::BPT), 3);
+            /// assert_eq!(u16::from(Opcode::CLRQ), 0x7c);
+            /// assert_eq!(u16::from(Opcode::CLRD), 0x7c);
+            /// assert_eq!(u16::from(Opcode::CLRO), 0x7cfd);
+            /// assert_eq!(u16::from(Opcode::CLRH), 0x7cfd);
+            /// ```
+            fn from(opcode: Opcode) -> Self {
+                match opcode {
+                    $(
+                        Opcode::$opcode => $word,
+                    )+
+                    $(
+                        Opcode::$dup_opcode => $dup_word,
+                    )+
+                }
+            }
+        }
+
         impl Display for Opcode {
             /// Formats the value using the given formatter.
             ///
@@ -511,7 +624,7 @@ macro_rules! process_opcodes {
             /// use vax_disassembler::opcode::{Instruction, Opcode};
             /// use vax_disassembler::operand::{Operand, Register};
             ///
-            /// 
+            ///
             /// assert_eq!(&format!("{}", Opcode::NOP), "NOP");
             /// assert_eq!(&format!("{}", Opcode::MOVC5) , "MOVC5");
             /// assert_eq!(&format!("{}", Opcode::PUSHAW) , "PUSHAW");
@@ -696,19 +809,45 @@ macro_rules! process_opcodes {
         #[cfg(test)]
         mod opcode_tests {
             use super::*;
+            use crate::operand::tests::operand;
+            use proptest::prelude::*;
+
+            /// This generates a random instruction. It doesn't include the duplicate instructions.
+            pub fn instruction() -> impl Strategy<Value = (Instruction, Vec<u8>)> {
+                prop_oneof![$(
+                    instruction_prop_compose!($word, $opcode, $operands),
+                )*]
+            }
+
+            /// This generates a random instruction, including the duplicate instructions.
+            ///
+            /// When decoding the buffer, duplicate instructions will not be generated, so don't
+            /// use this for ReadMacro32 tests.
+            pub fn instruction_w_dup() -> impl Strategy<Value = (Instruction, Vec<u8>)> {
+                prop_oneof![
+                $(
+                    instruction_prop_compose!($word, $opcode, $operands),
+                )*
+                $(
+                    instruction_prop_compose!($dup_word, $dup_opcode, $dup_operands),
+                )*
+                ]
+            }
 
             #[test]
-            pub fn verify_u16_to_opcode() {
+            fn verify_u16_to_opcode() {
                 $(
                     assert_eq!(Opcode::try_from($word).unwrap(), Opcode::$opcode);
                 )*
             }
 
             #[test]
-            pub fn verify_duplicate_opcodes() {
+            fn verify_duplicate_opcodes() {
                 $(
                     let opcode_u16 = u16::from(&Opcode::$dup_opcode);
-                    assert_ne!(Opcode::$dup_opcode, Opcode::try_from(opcode_u16).unwrap());
+                    if (opcode_u16 < 0x100) || ((opcode_u16 & 0xFF) >= 0xFD) {
+                        assert_ne!(Opcode::$dup_opcode, Opcode::try_from(opcode_u16).unwrap());
+                    }
                 )+
             }
         }
@@ -718,11 +857,67 @@ macro_rules! process_opcodes {
 // This calls the process_opcodes with the VAX opcode list.
 include!("process_opcodes.in");
 
+impl Instruction {
+    /// Length of the [Instruction] in bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use vax_disassembler::opcode::Instruction;
+    /// use vax_disassembler::operand::{IndexedOperand, Operand, Register};
+    ///
+    /// assert_eq!(Instruction::NOP([]).len(), 1);
+    /// assert_eq!(Instruction::BPT([]).len(), 1);
+    /// assert_eq!(Instruction::CLRQ([Operand::Indexed(
+    ///     IndexedOperand::LongwordDisplacement(-123456, Register::R0), Register::R1)]).len(), 7);
+    /// assert_eq!(Instruction::CLRO([Operand::Indexed(
+    ///     IndexedOperand::LongwordDisplacement(7654321, Register::R2), Register::R3)]).len(), 8);
+    /// ```
+    pub fn len(&self) -> usize {
+        let mut len = self.opcode().len();
+        for operand in self.operands().iter() {
+            len += operand.len();
+        }
+        len
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn verify_u16_to_opcode() {
-        super::opcode_tests::verify_u16_to_opcode();
+    use super::opcode_tests::{instruction, instruction_w_dup};
+    use proptest::prelude::*;
+    use crate::{ReadMacro32, WriteInstruction};
+
+    proptest! {
+        #[test]
+        fn verify_read_instruction((instruction, buf) in instruction()) {
+            let mut reader = std::io::Cursor::new(buf);
+            assert_eq!(instruction, reader.disassemble().unwrap());
+        }
     }
 
+    proptest! {
+        #[test]
+        fn verify_write_instruction((instruction, expected) in instruction()) {
+            let mut buf = Vec::new();
+            buf.write_instruction(instruction)?;
+            assert_eq!(&buf, &expected);
+        }
+    }
+
+    proptest! {
+        #[test]
+        #[ignore]
+        // This isn't a test. It is to manually verify that instruction() is working properly.
+        fn print_instruction((instruction, _buf) in instruction_w_dup()) {
+            static mut FIRST_TIME: bool = true;
+            if unsafe { FIRST_TIME } {
+                use std::{thread::sleep, time::Duration};
+                // Wait for other tests to finish. . .
+                sleep(Duration::from_millis(100));
+                unsafe { FIRST_TIME = false; }
+            }
+            println!("{}", instruction);
+        }
+    }
 }

@@ -35,14 +35,16 @@ pub enum Error {
     InvalidOpcodeString(String),
 
     /// # Invalid Indexed Operand
-    ///
-    /// 
     #[error("Invalid indexed operand: {0:?}")]
     InvalidIndexedOperand(Operand),
 
     /// # Invalid Access Type and Data Type Combination
     #[error("Invalid access type and data size: access = {0:?}, size = {0:?}")]
     InvalidAccessSize(AccessType, DataType),
+
+    /// # Cannot write an Undefined operand
+    #[error("Write of undefined operand is invalid.")]
+    CantWriteUndefined,
 
     /// # Unimplemented Feature
     ///
