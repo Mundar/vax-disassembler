@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0039d4d3b3083bc9e65dd567f239bb3a2bccfda525f6d2dac3032e57812eff3e # shrinks to (operand, input, _access, _size) = (ByteDisplacementDeferred(0, R0), [176, 0], Read, Byte)
+cc a39dc57b6dbee5b700f0c0467fa1595ca67fb97f7740a6fec8c3d3fee3e2cfb2 # shrinks to (operand, input, access, size) = (LongwordDisplacementDeferred(16777216, R0), [240, 0, 0, 0, 1], Read, Byte)
+cc 989497c61073e3ae6495c497fc9621ec937b7dbdeaea850159d70ee82b2898fc # shrinks to (operand, input, access, size) = (Immediate(GFloating(GFloating { bits: 0x0000000000008020, sign: Negative, exponent: -1022, frac: 0x8000000000000000 })), [143, 32, 128, 0, 0, 0, 0, 0, 0], Read, GFloating)
+cc 43b57ba7424a08a1595d3b8299906feadabd3abd0a86b33cc634b906a77d4a50 # shrinks to (operand, input, access, size) = (Immediate(GFloating(GFloating { bits: 0x0000000000008020, sign: Negative, exponent: -1022, frac: 0x8000000000000000 })), [143, 32, 128, 0, 0, 0, 0, 0, 0], Read, GFloating)
+cc ecce1f5019d9dcfa95bc7329ca6f8f956713c9481053bce3bfbafd5c390b5975 # shrinks to (operand, input, access, size) = (Immediate(Octoword(0)), [143, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Read, Octoword)

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 806d60d0154abf790d21f84ea0fba1fc2b4902c05c6e08ec286fd7dc8544b909 # shrinks to (instruction, buf) = (BNEQU([Branch(Byte(0))]), [18, 0])
