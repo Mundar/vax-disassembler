@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
+- Updated vax-floating crate to 0.2.1+ to get bug fixes for that crate.
+
 ## [0.1.2] - 2026-10-20
 
 - Added len() functions to DataValue, Operand, Opcode, and Instruction types.
